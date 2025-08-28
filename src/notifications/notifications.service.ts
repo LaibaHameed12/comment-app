@@ -28,17 +28,14 @@ export class NotificationsService {
         });
         const saved = await notification.save();
 
-        // ✅ Send via WebSocket immediately
-        this.notificationsGateway.sendNotification(recipient.toString(), {
-            id: saved._id,
-            type,
-            message,
-            sender,
-            referenceId: saved.comment,   // FIXED ✅
-            createdAt: saved.createdAt,
-        });
+        const populated = await this.notificationModel.findById(saved._id)
+            .populate('sender', 'username email')
+            .populate('comment', 'content')
+            .exec();
 
-        return saved;
+        // ✅ Send via WebSocket immediately
+        this.notificationsGateway.sendNotification(recipient.toString(), populated);
+        return populated;
     }
 
 

@@ -57,4 +57,16 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
         this.server.emit('replyCreated', reply);
     }
 
+    likeComment(like: any) {
+        this.server.emit('likeNotification', like);
+    }
+
+    unlikeComment(dislike: any) {
+        this.server.emit('dislikeNotification', dislike);
+    }
+
+    followUser(user: any) {
+        this.server.emit('followNotification', user);
+    }
+
 }

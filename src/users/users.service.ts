@@ -73,6 +73,8 @@ export class UsersService {
             this.notificationsGateway.sendNotification(targetUser._id.toString(), notification);
         }
 
+        this.notificationsGateway.followUser(user);
+
         return user;
     }
 

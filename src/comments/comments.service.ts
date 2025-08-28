@@ -5,7 +5,6 @@ import { Comment, CommentDocument } from './schemas/comment.schema';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { User, UserDocument } from 'src/users/schemas/user.schema';
 import { NotificationsGateway } from 'src/notifications/notifications.gateway';
-import { Notification } from 'src/notifications/schemas/notification.schema';
 
 @Injectable()
 export class CommentsService {
@@ -99,92 +98,102 @@ export class CommentsService {
         return comment;
     }
 
-    /** Like a comment (toggle) */
     async like(commentId: string, userId: string): Promise<CommentDocument> {
         const userObjectId = new Types.ObjectId(userId);
+
         const comment = await this.commentModel.findById(commentId);
         if (!comment) throw new NotFoundException('Comment not found');
 
         const hasLiked = comment.likes.some(id => id.equals(userObjectId));
         const hasDisliked = comment.unlikes.some(id => id.equals(userObjectId));
 
+        let update: any = {};
         if (hasLiked) {
-            // User already liked -> remove like
-            comment.likes = comment.likes.filter(id => !id.equals(userObjectId));
+            update.$pull = { likes: userObjectId };
         } else {
-            // Add like and remove from dislikes if present
-            comment.likes.push(userObjectId);
+            update.$addToSet = { likes: userObjectId };
             if (hasDisliked) {
-                comment.unlikes = comment.unlikes.filter(id => !id.equals(userObjectId));
-            }
-
-            // Notify author if not self
-            if (!comment.author.equals(userObjectId)) {
-                const notification = await this.notificationsService.createNotification(
-                    'like',
-                    comment.author,
-                    userObjectId,
-                    'liked your comment',
-                    comment._id,
-                );
-                this.notificationsGateway.sendNotification(comment.author.toString(), notification);
+                update.$pull = { ...update.$pull, unlikes: userObjectId };
             }
         }
 
-        const savedComment = await comment.save();
+        const updatedComment = await this.commentModel.findByIdAndUpdate(
+            commentId,
+            update,
+            { new: true } // return updated doc
+        )
+            .populate('author', 'username email')
+            .populate({
+                path: 'replies',
+                populate: { path: 'author', select: 'username email' },
+            });
 
-        await savedComment.populate('author', 'username email');
-        await savedComment.populate({
-            path: 'replies',
-            populate: { path: 'author', select: 'username email' },
-        });
+        if (!updatedComment) throw new NotFoundException('Comment not found');
 
-        return savedComment;
+        // Send notification if necessary
+        if (!hasLiked && !comment.author.equals(userObjectId)) {
+            const notification = await this.notificationsService.createNotification(
+                'like',
+                comment.author,
+                userObjectId,
+                'liked your comment',
+                comment._id,
+            );
+            this.notificationsGateway.sendNotification(comment.author.toString(), notification);
+        }
+
+        this.notificationsGateway.likeComment(updatedComment);
+
+        return updatedComment;
     }
 
-    /** Unlike a comment (toggle) */
     async unlike(commentId: string, userId: string): Promise<CommentDocument> {
         const userObjectId = new Types.ObjectId(userId);
+
         const comment = await this.commentModel.findById(commentId);
         if (!comment) throw new NotFoundException('Comment not found');
 
         const hasDisliked = comment.unlikes.some(id => id.equals(userObjectId));
         const hasLiked = comment.likes.some(id => id.equals(userObjectId));
 
+        let update: any = {};
         if (hasDisliked) {
-            // User already disliked -> remove dislike
-            comment.unlikes = comment.unlikes.filter(id => !id.equals(userObjectId));
+            update.$pull = { unlikes: userObjectId };
         } else {
-            // Add dislike and remove from likes if present
-            comment.unlikes.push(userObjectId);
+            update.$addToSet = { unlikes: userObjectId };
             if (hasLiked) {
-                comment.likes = comment.likes.filter(id => !id.equals(userObjectId));
-            }
-
-            // Notify author if not self
-            if (!comment.author.equals(userObjectId)) {
-                const notification = await this.notificationsService.createNotification(
-                    'dislike',
-                    comment.author,
-                    userObjectId,
-                    'disliked your comment',
-                    comment._id,
-                );
-                this.notificationsGateway.sendNotification(comment.author.toString(), notification);
+                update.$pull = { ...update.$pull, likes: userObjectId };
             }
         }
 
-        const savedComment = await comment.save();
+        const updatedComment = await this.commentModel.findByIdAndUpdate(
+            commentId,
+            update,
+            { new: true } // return updated doc
+        )
+            .populate('author', 'username email')
+            .populate({
+                path: 'replies',
+                populate: { path: 'author', select: 'username email' },
+            });
 
-        await savedComment.populate('author', 'username email');
-        await savedComment.populate({
-            path: 'replies',
-            populate: { path: 'author', select: 'username email' },
-        });
+        if (!updatedComment) throw new NotFoundException('Comment not found');
 
-        return savedComment;
+        // Send notification if necessary
+        if (!hasDisliked && !comment.author.equals(userObjectId)) {
+            const notification = await this.notificationsService.createNotification(
+                'dislike',
+                comment.author,
+                userObjectId,
+                'disliked your comment',
+                comment._id,
+            );
+            this.notificationsGateway.sendNotification(comment.author.toString(), notification);
+        }
+        this.notificationsGateway.unlikeComment(updatedComment);
+
+        return updatedComment;
     }
-
 
     /** Delete a comment */
     async delete(commentId: string, userId: string): Promise<{ message: string }> {
