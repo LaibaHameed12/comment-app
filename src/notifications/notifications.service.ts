@@ -38,7 +38,6 @@ export class NotificationsService {
         return populated;
     }
 
-
     async findByRecipient(userId: string) {
         return this.notificationModel
             .find({ recipient: new Types.ObjectId(userId) }) // convert string to ObjectId
@@ -55,4 +54,27 @@ export class NotificationsService {
             { new: true },
         );
     }
+
+    // src/notifications/notifications.service.ts
+    async deleteNotification(id: string, userId: string) {
+        const notification = await this.notificationModel.findById(id);
+        if (!notification) {
+            throw new Error('Notification not found');
+        }
+
+        // ✅ Only the recipient can delete their notification
+        if (notification.recipient.toString() !== userId) {
+            throw new Error('You are not authorized to delete this notification');
+        }
+
+        await this.notificationModel.findByIdAndDelete(id);
+        return { message: 'Notification deleted successfully' };
+    }
+
+    // Optional: delete all notifications for a user
+    async deleteAllForUser(userId: string) {
+        await this.notificationModel.deleteMany({ recipient: new Types.ObjectId(userId) });
+        return { message: 'All notifications cleared' };
+    }
+
 }

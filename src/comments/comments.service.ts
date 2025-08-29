@@ -195,7 +195,7 @@ export class CommentsService {
         return updatedComment;
     }
 
-    /** Delete a comment */
+    /** Delete a comment and all its descendants */
     async delete(commentId: string, userId: string): Promise<{ message: string }> {
         const comment = await this.commentModel.findById(commentId);
         if (!comment) throw new NotFoundException('Comment not found');
@@ -205,12 +205,17 @@ export class CommentsService {
             throw new Error('You are not authorized to delete this comment');
         }
 
-        await this.commentModel.findByIdAndDelete(commentId);
+        // Helper to recursively delete children
+        const deleteWithChildren = async (id: string): Promise<void> => {
+            const children = await this.commentModel.find({ parentComment: id }).select('_id');
+            for (const child of children) {
+                await deleteWithChildren(child._id.toString());
+            }
+            await this.commentModel.findByIdAndDelete(id);
+        };
 
-        // Optionally, delete nested replies
-        await this.commentModel.deleteMany({ parentComment: commentId });
+        await deleteWithChildren(commentId);
 
-        return { message: 'Comment deleted successfully' };
+        return { message: 'Comment and all child comments deleted successfully' };
     }
-
 }
